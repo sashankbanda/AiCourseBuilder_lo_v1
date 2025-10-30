@@ -1,5 +1,3 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -111,7 +109,17 @@ Deno.serve(async (req) => {
           }),
         });
 
+        if (!notesResponse.ok) {
+          const error = await notesResponse.text();
+          console.error('Notes generation error:', error);
+          throw new Error('Failed to generate notes');
+        }
+
         const notesData = await notesResponse.json();
+        if (!notesData.choices || !notesData.choices[0]) {
+          console.error('Invalid notes response:', notesData);
+          throw new Error('Invalid notes response structure');
+        }
         const notes = notesData.choices[0].message.content;
 
         // Generate quiz using Gemini with structured output
@@ -137,7 +145,17 @@ Deno.serve(async (req) => {
           }),
         });
 
+        if (!quizResponse.ok) {
+          const error = await quizResponse.text();
+          console.error('Quiz generation error:', error);
+          throw new Error('Failed to generate quiz');
+        }
+
         const quizData = await quizResponse.json();
+        if (!quizData.choices || !quizData.choices[0]) {
+          console.error('Invalid quiz response:', quizData);
+          throw new Error('Invalid quiz response structure');
+        }
         const quiz = JSON.parse(quizData.choices[0].message.content);
 
         return {
@@ -160,7 +178,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in generate-course:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error occurred' }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

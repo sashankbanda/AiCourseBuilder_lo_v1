@@ -5,9 +5,10 @@ import { AuthForm } from '@/components/auth/AuthForm';
 import { TopicInputForm } from '@/components/course/TopicInputForm';
 import { LessonDashboard } from '@/components/course/LessonDashboard';
 import { LessonView } from '@/components/course/LessonView';
+import { CoursesList } from '@/components/course/CoursesList';
 import { useCourseData } from '@/hooks/useCourseData';
 import { useCourseLogic } from '@/hooks/useCourseLogic';
-import { Lesson } from '@/types/course';
+import { Lesson, Course } from '@/types/course';
 import { Button } from '@/components/ui/button';
 import { LogOut, ArrowLeft } from 'lucide-react';
 
@@ -15,8 +16,10 @@ const Index = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
+  const [showNewCourseForm, setShowNewCourseForm] = useState(false);
   
   const {
+    courses,
     currentCourse,
     setCurrentCourse,
     lessons,
@@ -25,6 +28,7 @@ const Index = () => {
     createCourse,
     updateLessonProgress,
     saveLessons,
+    deleteCourse,
   } = useCourseData(user?.id);
 
   const { generatingCourse, generateCourse } = useCourseLogic();
@@ -52,6 +56,7 @@ const Index = () => {
     await supabase.auth.signOut();
     setCurrentCourse(null);
     setSelectedLesson(null);
+    setShowNewCourseForm(false);
   };
 
   const handleTopicSubmit = async (topic: string) => {
@@ -60,6 +65,7 @@ const Index = () => {
       try {
         const data = await generateCourse(topic, courseId);
         await saveLessons(courseId, data.lessons);
+        setShowNewCourseForm(false);
       } catch (error) {
         console.error('Failed to generate course:', error);
       }
@@ -83,6 +89,18 @@ const Index = () => {
   const handleNewCourse = () => {
     setCurrentCourse(null);
     setSelectedLesson(null);
+    setShowNewCourseForm(true);
+  };
+
+  const handleCourseSelect = (course: Course) => {
+    setCurrentCourse(course);
+    setShowNewCourseForm(false);
+  };
+
+  const handleBackToCourses = () => {
+    setCurrentCourse(null);
+    setSelectedLesson(null);
+    setShowNewCourseForm(false);
   };
 
   if (loading) {
@@ -105,10 +123,10 @@ const Index = () => {
             AI Course Builder
           </h1>
           <div className="flex items-center gap-2">
-            {currentCourse && !selectedLesson && (
-              <Button variant="outline" onClick={handleNewCourse} size="sm">
+            {(currentCourse || showNewCourseForm) && (
+              <Button variant="outline" onClick={handleBackToCourses} size="sm">
                 <ArrowLeft className="w-4 h-4 mr-2" />
-                New Course
+                My Courses
               </Button>
             )}
             <Button variant="outline" onClick={handleSignOut} size="sm">
@@ -132,10 +150,17 @@ const Index = () => {
             lessons={lessons}
             onLessonClick={handleLessonClick}
           />
-        ) : (
+        ) : showNewCourseForm ? (
           <TopicInputForm
             onSubmit={handleTopicSubmit}
             loading={generatingCourse || lessonsLoading}
+          />
+        ) : (
+          <CoursesList
+            courses={courses}
+            onCourseSelect={handleCourseSelect}
+            onNewCourse={handleNewCourse}
+            onCourseDelete={deleteCourse}
           />
         )}
       </main>

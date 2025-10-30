@@ -15,7 +15,7 @@ export const useCourseData = (userId: string | undefined) => {
     if (!userId) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('courses')
         .select('*')
         .eq('user_id', userId)
@@ -37,7 +37,7 @@ export const useCourseData = (userId: string | undefined) => {
   const fetchLessons = async (courseId: string) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('lessons')
         .select('*')
         .eq('course_id', courseId)
@@ -46,10 +46,10 @@ export const useCourseData = (userId: string | undefined) => {
       if (error) throw error;
       
       // Transform the data to match our Lesson type
-      const transformedLessons: Lesson[] = (data || []).map(lesson => ({
+      const transformedLessons: Lesson[] = (data || []).map((lesson: any) => ({
         ...lesson,
-        videos: (lesson.videos as any) || [],
-        quiz_data: (lesson.quiz_data as any) || null,
+        videos: lesson.videos || [],
+        quiz_data: lesson.quiz_data || null,
       }));
       
       setLessons(transformedLessons);
@@ -70,7 +70,7 @@ export const useCourseData = (userId: string | undefined) => {
     if (!userId) return null;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('courses')
         .insert({ user_id: userId, topic })
         .select()
@@ -78,9 +78,12 @@ export const useCourseData = (userId: string | undefined) => {
 
       if (error) throw error;
       
-      setCourses(prev => [data, ...prev]);
-      setCurrentCourse(data);
-      return data.id;
+      if (data) {
+        setCourses(prev => [data, ...prev]);
+        setCurrentCourse(data);
+        return data.id;
+      }
+      return null;
     } catch (error) {
       console.error('Error creating course:', error);
       toast({
@@ -104,7 +107,7 @@ export const useCourseData = (userId: string | undefined) => {
         updates.quiz_score = quizScore;
       }
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('lessons')
         .update(updates)
         .eq('id', lessonId);
@@ -135,7 +138,7 @@ export const useCourseData = (userId: string | undefined) => {
   // Update course completion percentage
   const updateCourseCompletion = async (courseId: string) => {
     try {
-      const { data: courseLessons, error } = await supabase
+      const { data: courseLessons, error } = await (supabase as any)
         .from('lessons')
         .select('is_completed')
         .eq('course_id', courseId);
@@ -143,10 +146,10 @@ export const useCourseData = (userId: string | undefined) => {
       if (error) throw error;
 
       const total = courseLessons?.length || 0;
-      const completed = courseLessons?.filter(l => l.is_completed).length || 0;
+      const completed = courseLessons?.filter((l: any) => l.is_completed).length || 0;
       const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-      await supabase
+      await (supabase as any)
         .from('courses')
         .update({ completion_percentage: percentage })
         .eq('id', courseId);
@@ -162,10 +165,10 @@ export const useCourseData = (userId: string | undefined) => {
   // Save generated lessons to database
   const saveLessons = async (courseId: string, lessonsData: any[]) => {
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('lessons')
         .insert(
-          lessonsData.map((lesson, index) => ({
+          lessonsData.map((lesson: any, index: number) => ({
             course_id: courseId,
             title: lesson.title,
             order_index: index,
@@ -180,6 +183,35 @@ export const useCourseData = (userId: string | undefined) => {
     } catch (error) {
       console.error('Error saving lessons:', error);
       throw error;
+    }
+  };
+
+  // Delete a course and its lessons
+  const deleteCourse = async (courseId: string) => {
+    try {
+      const { error } = await (supabase as any)
+        .from('courses')
+        .delete()
+        .eq('id', courseId);
+
+      if (error) throw error;
+
+      setCourses(prev => prev.filter(course => course.id !== courseId));
+      if (currentCourse?.id === courseId) {
+        setCurrentCourse(null);
+      }
+      
+      toast({
+        title: "Course deleted",
+        description: "The course has been successfully deleted.",
+      });
+    } catch (error) {
+      console.error('Error deleting course:', error);
+      toast({
+        title: "Error deleting course",
+        description: "Please try again later.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -200,5 +232,6 @@ export const useCourseData = (userId: string | undefined) => {
     createCourse,
     updateLessonProgress,
     saveLessons,
+    deleteCourse,
   };
 };
