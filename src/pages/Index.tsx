@@ -6,17 +6,21 @@ import { TopicInputForm } from '@/components/course/TopicInputForm';
 import { LessonDashboard } from '@/components/course/LessonDashboard';
 import { LessonView } from '@/components/course/LessonView';
 import { CoursesList } from '@/components/course/CoursesList';
+import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
 import { useCourseData } from '@/hooks/useCourseData';
 import { useCourseLogic } from '@/hooks/useCourseLogic';
+import { useAllLessons } from '@/hooks/useAllLessons';
+import { useAnalytics } from '@/hooks/useAnalytics';
 import { Lesson, Course } from '@/types/course';
 import { Button } from '@/components/ui/button';
-import { LogOut, ArrowLeft } from 'lucide-react';
+import { LogOut, ArrowLeft, BarChart3 } from 'lucide-react';
 
 const Index = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [showNewCourseForm, setShowNewCourseForm] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
   
   const {
     courses,
@@ -32,6 +36,9 @@ const Index = () => {
   } = useCourseData(user?.id);
 
   const { generatingCourse, generateCourse } = useCourseLogic();
+
+  const { lessonsMap } = useAllLessons(courses.map(c => c.id));
+  const analytics = useAnalytics(courses, lessonsMap);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -57,6 +64,7 @@ const Index = () => {
     setCurrentCourse(null);
     setSelectedLesson(null);
     setShowNewCourseForm(false);
+    setShowAnalytics(false);
   };
 
   const handleTopicSubmit = async (topic: string) => {
@@ -101,6 +109,14 @@ const Index = () => {
     setCurrentCourse(null);
     setSelectedLesson(null);
     setShowNewCourseForm(false);
+    setShowAnalytics(false);
+  };
+
+  const handleShowAnalytics = () => {
+    setShowAnalytics(true);
+    setCurrentCourse(null);
+    setSelectedLesson(null);
+    setShowNewCourseForm(false);
   };
 
   if (loading) {
@@ -123,10 +139,16 @@ const Index = () => {
             AI Course Builder
           </h1>
           <div className="flex items-center gap-2">
-            {(currentCourse || showNewCourseForm) && (
+            {(currentCourse || showNewCourseForm || showAnalytics) && (
               <Button variant="outline" onClick={handleBackToCourses} size="sm">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 My Courses
+              </Button>
+            )}
+            {!showAnalytics && !currentCourse && (
+              <Button variant="outline" onClick={handleShowAnalytics} size="sm">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Analytics
               </Button>
             )}
             <Button variant="outline" onClick={handleSignOut} size="sm">
@@ -138,7 +160,9 @@ const Index = () => {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        {selectedLesson ? (
+        {showAnalytics ? (
+          <AnalyticsDashboard analytics={analytics} onBack={handleBackToCourses} />
+        ) : selectedLesson ? (
           <LessonView
             lesson={selectedLesson}
             onBack={handleBack}
