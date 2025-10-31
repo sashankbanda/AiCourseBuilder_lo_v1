@@ -10,7 +10,9 @@ There are several ways of editing your application.
 
 **Use Lovable**
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/288ff59d-230d-442f-a6cd-4fdbbfb2185d) and start prompting.
+Simply visit the [Aicoursebuilder Project](https://lovable.dev/projects/288ff59d-230d-442f-a6cd-4fdbbfb2185d) and start prompting.
+
+new version with all updated features visit the [Aicoursebuilder Project till added Analytics](https://lovable.dev/projects/cfe685bd-2b8c-4515-845f-b8b68a9b12bc?remixed=true) and start prompting.
 
 Changes made via Lovable will be committed automatically to this repo.
 
