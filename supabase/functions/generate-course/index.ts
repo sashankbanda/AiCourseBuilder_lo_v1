@@ -1,188 +1,171 @@
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { User } from '@supabase/supabase-js';
+import { AuthForm } from '@/components/auth/AuthForm';
+import { TopicInputForm } from '@/components/course/TopicInputForm';
+import { LessonDashboard } from '@/components/course/LessonDashboard';
+import { LessonView } from '@/components/course/LessonView';
+import { CoursesList } from '@/components/course/CoursesList';
+import { useCourseData } from '@/hooks/useCourseData';
+import { useCourseLogic } from '@/hooks/useCourseLogic';
+import { Lesson, Course } from '@/types/course';
+import { Button } from '@/components/ui/button';
+import { LogOut, ArrowLeft } from 'lucide-react';
 
-interface LessonStructure {
-  title: string;
-  subtopics?: string[];
-}
+const Index = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
+  const [showNewCourseForm, setShowNewCourseForm] = useState(false);
+  
+  const {
+    courses,
+    currentCourse,
+    setCurrentCourse,
+    lessons,
+    loading: lessonsLoading,
+    fetchLessons,
+    createCourse,
+    updateLessonProgress,
+    saveLessons,
+    deleteCourse,
+  } = useCourseData(user?.id);
 
-interface VideoResult {
-  id: string;
-  title: string;
-  url: string;
-  thumbnail: string;
-}
+  const { generatingCourse, generateCourse } = useCourseLogic();
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    const { topic, courseId } = await req.json();
-    console.log('Generating course for:', topic);
-
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    const YOUTUBE_API_KEY = Deno.env.get('YOUTUBE_API_KEY');
-
-    if (!LOVABLE_API_KEY || !YOUTUBE_API_KEY) {
-      throw new Error('Missing required API keys');
-    }
-
-    // Step 1: Decompose topic into lessons using Gemini
-    console.log('Step 1: Decomposing topic...');
-    const decompositionResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert course designer. Break down topics into 4-6 sequential learning modules. If the topic is too specific for multiple lessons, return it as a single comprehensive lesson.'
-          },
-          {
-            role: 'user',
-            content: `Analyze this topic and break it into 4-6 sequential lessons: "${topic}". Return ONLY valid JSON with this structure: {"lessons": [{"title": "lesson name"}]}`
-          }
-        ],
-        response_format: { type: 'json_object' }
-      }),
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
     });
 
-    if (!decompositionResponse.ok) {
-      const error = await decompositionResponse.text();
-      console.error('Decomposition error:', error);
-      throw new Error('Failed to decompose topic');
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (currentCourse) {
+      fetchLessons(currentCourse.id);
     }
+  }, [currentCourse]);
 
-    const decompositionData = await decompositionResponse.json();
-    const lessonsStructure: LessonStructure[] = JSON.parse(
-      decompositionData.choices[0].message.content
-    ).lessons;
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setCurrentCourse(null);
+    setSelectedLesson(null);
+    setShowNewCourseForm(false);
+  };
 
-    console.log('Lessons structure:', lessonsStructure);
-
-    // Step 2: For each lesson, find videos, generate notes and quiz
-    const lessons = await Promise.all(
-      lessonsStructure.map(async (lessonStruct, index) => {
-        console.log(`Processing lesson ${index + 1}: ${lessonStruct.title}`);
-
-        // Find YouTube videos
-        const videoSearchQuery = encodeURIComponent(`${topic} ${lessonStruct.title} tutorial`);
-        const youtubeResponse = await fetch(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=4&q=${videoSearchQuery}&type=video&videoCategoryId=27&key=${YOUTUBE_API_KEY}`
-        );
-
-        const youtubeData = await youtubeResponse.json();
-        const videos: VideoResult[] = youtubeData.items?.map((item: any) => ({
-          id: item.id.videoId,
-          title: item.snippet.title,
-          url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-          thumbnail: item.snippet.thumbnails.medium.url,
-        })) || [];
-
-        // Generate study notes using Gemini
-        const notesResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are an expert educator. Create comprehensive, well-structured study notes in markdown format.'
-              },
-              {
-                role: 'user',
-                content: `Create detailed 300-word study notes for: "${lessonStruct.title}" in the context of "${topic}". Include key concepts, explanations, and examples. Format with clear headings and bullet points.`
-              }
-            ],
-          }),
-        });
-
-        if (!notesResponse.ok) {
-          const error = await notesResponse.text();
-          console.error('Notes generation error:', error);
-          throw new Error('Failed to generate notes');
-        }
-
-        const notesData = await notesResponse.json();
-        if (!notesData.choices || !notesData.choices[0]) {
-          console.error('Invalid notes response:', notesData);
-          throw new Error('Invalid notes response structure');
-        }
-        const notes = notesData.choices[0].message.content;
-
-        // Generate quiz using Gemini with structured output
-        const quizResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a quiz generator. Create educational multiple-choice questions.'
-              },
-              {
-                role: 'user',
-                content: `Create 5 multiple-choice questions about "${lessonStruct.title}" in the context of "${topic}". Return ONLY valid JSON with this structure: {"questions": [{"question": "...", "options": ["A", "B", "C", "D"], "correctAnswer": 0}]}`
-              }
-            ],
-            response_format: { type: 'json_object' }
-          }),
-        });
-
-        if (!quizResponse.ok) {
-          const error = await quizResponse.text();
-          console.error('Quiz generation error:', error);
-          throw new Error('Failed to generate quiz');
-        }
-
-        const quizData = await quizResponse.json();
-        if (!quizData.choices || !quizData.choices[0]) {
-          console.error('Invalid quiz response:', quizData);
-          throw new Error('Invalid quiz response structure');
-        }
-        const quiz = JSON.parse(quizData.choices[0].message.content);
-
-        return {
-          title: lessonStruct.title,
-          videos,
-          notes,
-          quiz,
-        };
-      })
-    );
-
-    console.log('Course generation complete');
-
-    return new Response(
-      JSON.stringify({ lessons }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  const handleTopicSubmit = async (topic: string) => {
+    const courseId = await createCourse(topic);
+    if (courseId) {
+      try {
+        const data = await generateCourse(topic, courseId);
+        await saveLessons(courseId, data.lessons);
+        setShowNewCourseForm(false);
+      } catch (error) {
+        console.error('Failed to generate course:', error);
       }
-    );
-  } catch (error) {
-    console.error('Error in generate-course:', error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error occurred' }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+    }
+  };
+
+  const handleLessonClick = (lesson: Lesson) => {
+    setSelectedLesson(lesson);
+  };
+
+  const handleBack = () => {
+    setSelectedLesson(null);
+  };
+
+  const handleQuizComplete = async (score: number) => {
+    if (selectedLesson) {
+      await updateLessonProgress(selectedLesson.id, true, score);
+    }
+  };
+
+  const handleNewCourse = () => {
+    setCurrentCourse(null);
+    setSelectedLesson(null);
+    setShowNewCourseForm(true);
+  };
+
+  const handleCourseSelect = (course: Course) => {
+    setCurrentCourse(course);
+    setShowNewCourseForm(false);
+  };
+
+  const handleBackToCourses = () => {
+    setCurrentCourse(null);
+    setSelectedLesson(null);
+    setShowNewCourseForm(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
     );
   }
-});
+
+  if (!user) {
+    return <AuthForm />;
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b border-border/50 backdrop-blur-sm sticky top-0 z-10 bg-background/50">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            AI Course Builder
+          </h1>
+          <div className="flex items-center gap-2">
+            {(currentCourse || showNewCourseForm) && (
+              <Button variant="outline" onClick={handleBackToCourses} size="sm">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                My Courses
+              </Button>
+            )}
+            <Button variant="outline" onClick={handleSignOut} size="sm">
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-8">
+        {selectedLesson ? (
+          <LessonView
+            lesson={selectedLesson}
+            onBack={handleBack}
+            onQuizComplete={handleQuizComplete}
+          />
+        ) : currentCourse && lessons.length > 0 ? (
+          <LessonDashboard
+            course={currentCourse}
+            lessons={lessons}
+            onLessonClick={handleLessonClick}
+          />
+        ) : showNewCourseForm ? (
+          <TopicInputForm
+            onSubmit={handleTopicSubmit}
+            loading={generatingCourse || lessonsLoading}
+          />
+        ) : (
+          <CoursesList
+            courses={courses}
+            onCourseSelect={handleCourseSelect}
+            onNewCourse={handleNewCourse}
+            onCourseDelete={deleteCourse}
+          />
+        )}
+      </main>
+    </div>
+  );
+};
+
+export default Index;
