@@ -1,4 +1,4 @@
-# Welcome to your Aicoursebuilder project
+# Welcome to Aicoursebuilder project
 
 ## Project info
 
